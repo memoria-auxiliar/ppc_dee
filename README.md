@@ -1,2 +1,2 @@
 # ppc_dee
-PPC do DEE
+Simulador para migração para o novo PPC
