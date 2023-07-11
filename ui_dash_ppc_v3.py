@@ -29,13 +29,25 @@ def acessar_dados_de_entrada(
     df_eqv['Disciplina_1'] = df_eqv['Disciplina_1'].str.strip()
     df_eqv['Disciplina_2'] = df_eqv['Disciplina_2'].str.strip()
 
-    # Se tiver alguma equivalência de disciplinas que não aparecem 
-    # nos ppc's 1 e 2, quero retirar da lista e avisar.
-    flag_in1 = [(item in df_ppc_1.index) for item in df_eqv['Disciplina_1']]
-    flag_in2 = [(item in df_ppc_2.index) for item in df_eqv['Disciplina_2']]
-    flag_out1 = [(not item) for item in flag_in1]
-    flag_out2 = [(not item) for item in flag_in2]
+    # Se tiver alguma equivalência com disciplinas que não aparecem 
+    # nos ppc's 1 ou 2, quero retirar da lista e avisar.
 
+    # Prepara flags para separar ok de não ok...
+    flag_in1 = []
+    flag_in2 = []
+    flag_out1 = []
+    flag_out2 = []
+    for idx, row in df_eqv.iterrows():
+
+        d1 = [item.strip() for item in row['Disciplina_1'].split('&&')]
+        d2 = [item.strip() for item in row['Disciplina_2'].split('&&')]
+
+        flag_in1.append(all([(item in df_ppc_1.index) for item in d1]))
+        flag_in2.append(all([(item in df_ppc_2.index) for item in d2]))
+        flag_out1.append(not flag_in1[-1])
+        flag_out2.append(not flag_in2[-1])
+
+    # Se houve algum caso: mostra ao usuário para depuração.
     if any(flag_out1) or any(flag_out2):
         onoff_print('Retiradas da lista - 2 disciplinas fora:\n')
         flag = [(item1 and item2) for item1, item2 in zip(flag_out1, flag_out2)]
@@ -49,6 +61,7 @@ def acessar_dados_de_entrada(
         flag = [(item1 and item2) for item1, item2 in zip(flag_in1, flag_out2)]
         onoff_print(f'{df_eqv[flag]}\n\n')
 
+    # Aplica o filtro para retirar inconsistências.
     flag = [(item1 and item2) for item1, item2 in zip(flag_in1, flag_in2)]
     df_eqv = df_eqv[flag].copy()
 
@@ -75,7 +88,9 @@ def montar_resumo_ppc(
 
         if item == 'Optativas':
             ch_cursada = sum(dff.loc[flag_cursada, 'CH'])
-            ch_restante = (CH_optativa - ch_cursada) if (CH_optativa - ch_cursada) > 0 else 0
+            if ch_cursada > CH_optativa:
+                ch_cursada = CH_optativa
+            ch_restante = CH_optativa - ch_cursada
             perc_restante = 100*ch_restante/CH_optativa
             perc_cursada = 100 - perc_restante
         else:
@@ -125,17 +140,20 @@ def montar_resumo_ppc_dee_ufpb_generalista(
 
                 onoff_print(f'disciplinas_ok = {disciplinas_ok}\n\n')
 
+                # Pega e prepara o df da enfase
                 planilha = dict_config['enfases_ppc_1'][enfase]['planilha']
                 df_enfase = dados[planilha]
                 df_enfase['Disciplina'] = df_enfase['Disciplina'].str.strip()
                 df_enfase = df_enfase.set_index('Disciplina')
 
+                # Filtra apenas as disciplinas Optativas...
                 # Observe que o 8° período foi incluído para pegar as optativas 
-                # obrigatórias como optativas para o generalista.
+                # obrigatórias pois são optativas para o generalista.
                 dff_enfase = df_enfase[df_enfase['Período'].isin(['8° período', 'Optativas'])]
                 onoff_print(f'dff_enfase = {dff_enfase}\n\n')
 
-                flag_enfase = [(idx in disciplinas_ok) for idx, row in dff_enfase.iterrows()]
+                # Seleciona as disciplinas do grupo filtrado que foram marcadas como "ok"
+                flag_enfase = [(idx in disciplinas_ok) for idx in dff_enfase.index]
                 onoff_print(f'flag_enfase = {flag_enfase}\n\n')
 
                 # Quando uma disciplina da lista de ok é computada em certa ênfase,
@@ -145,11 +163,17 @@ def montar_resumo_ppc_dee_ufpb_generalista(
                 ch_enfase = sum(dff_enfase.loc[flag_enfase, 'CH'])
                 onoff_print(f'Antes ch_enfase = {ch_enfase}\n\n')
 
+                # Nesse ponto, aplica o limite de 8 créditos por ênfase...
                 if ch_enfase > 8*15:
                     ch_enfase = 8*15
                 onoff_print(f'Depois ch_enfase = {ch_enfase}\n\n')
 
                 ch_cursada += ch_enfase
+
+                # Nesse ponto, aplica o limite de 20 créditos nas 3 ênfases...
+                if ch_cursada > 20*15:
+                    ch_cursada = 20*15
+
                 onoff_print(f'ch_cursada = {ch_cursada}\n\n')
                 onoff_print('=====\n\n')
 
@@ -531,7 +555,7 @@ def gera_checklist_ppc_2_e_graficos(checklist_values, dropdown_ppc_1, dropdown_p
     fig1.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 
     ret_1 = [
-        html.H6('Resumo PPC Anterior (CH 3855h):'),
+        html.H6('Resumo PPC Anterior (CH 3780h):'),
         # html.P(f"Carga horária: {cursada}h cursadas, {restante}h restantes"),
         # html.P(f"Créditos: {cursada/15:.0f} cursados, {restante/15:.0f} restantes"),
         dcc.Graph(
@@ -560,7 +584,7 @@ def gera_checklist_ppc_2_e_graficos(checklist_values, dropdown_ppc_1, dropdown_p
     fig2.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 
     ret_2 = [
-        html.H6('Resumo PPC Atual (CH 3900h):'),
+        html.H6('Resumo PPC Atual (CH 3825h):'),
         # html.P(f"Carga horária: {cursada}h dispensadas, {restante}h restantes"),
         # html.P(f"Créditos: {cursada/15:.0f} dispensados, {restante/15:.0f} restantes"),
         dcc.Graph(
